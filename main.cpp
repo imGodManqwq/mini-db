@@ -1,5 +1,5 @@
 #include <iostream>
-#include "./src/cli/REPL.cpp"
+#include "./include/cli/REPL.h"
 int main() {
     REPL repl;
     repl.run();
