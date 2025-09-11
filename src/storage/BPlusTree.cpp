@@ -41,20 +41,20 @@ void BPlusTreeLeafNode::insertRecord(const Value& key, uint32_t recordId) {
     // 找到插入位置
     int pos = 0;
     while (pos < keyCount) {
-        // 这里简化比较，实际需要根据Value类型进行比较
-        bool shouldInsert = std::visit([&key](const auto& a) -> bool {
-            return std::visit([&a](const auto& b) -> bool {
-                using T1 = std::decay_t<decltype(a)>;
-                using T2 = std::decay_t<decltype(b)>;
+        // 比较当前键和要插入的键，找到正确的插入位置
+        bool keyIsSmaller = std::visit([&key](const auto& currentKey) -> bool {
+            return std::visit([&currentKey](const auto& newKey) -> bool {
+                using T1 = std::decay_t<decltype(currentKey)>;
+                using T2 = std::decay_t<decltype(newKey)>;
                 if constexpr (std::is_same_v<T1, T2>) {
-                    return b >= a;
+                    return newKey < currentKey; // 新键小于当前键，继续查找
                 } else {
                     return false; // 不同类型不比较
                 }
             }, key);
         }, keys[pos]);
         
-        if (shouldInsert) break;
+        if (!keyIsSmaller) break; // 找到插入位置
         pos++;
     }
     
@@ -148,20 +148,22 @@ void BPlusTreeInternalNode::removeChild(int index) {
 
 BPlusTreeNode* BPlusTreeInternalNode::findChild(const Value& key) const {
     int pos = 0;
+    // 在B+树内部节点中，keys[i]是子节点children[i+1]的最小值
+    // 如果key < keys[pos]，则应该去左边的子节点children[pos]
     while (pos < keyCount) {
-        bool keyLessEqual = std::visit([&key](const auto& a) -> bool {
-            return std::visit([&a](const auto& b) -> bool {
-                using T1 = std::decay_t<decltype(a)>;
-                using T2 = std::decay_t<decltype(b)>;
+        bool keyLessThanCurrent = std::visit([&key](const auto& currentKey) -> bool {
+            return std::visit([&currentKey](const auto& searchKey) -> bool {
+                using T1 = std::decay_t<decltype(currentKey)>;
+                using T2 = std::decay_t<decltype(searchKey)>;
                 if constexpr (std::is_same_v<T1, T2>) {
-                    return b <= a;
+                    return searchKey < currentKey;
                 } else {
                     return false;
                 }
             }, key);
         }, keys[pos]);
         
-        if (keyLessEqual) break;
+        if (keyLessThanCurrent) break;
         pos++;
     }
     
@@ -322,34 +324,25 @@ void BPlusTree::splitLeafNode(BPlusTreeLeafNode* leaf, const Value& key, uint32_
     auto newLeaf = new BPlusTreeLeafNode(maxKeys_);
     nodeCount_++;
     
-    // 临时存储所有键值对
-    std::vector<Value> tempKeys = leaf->keys;
-    std::vector<uint32_t> tempRecordIds = leaf->recordIds;
+    // 收集所有键值对（包括新的键值对）
+    std::vector<std::pair<Value, uint32_t>> allEntries;
     
-    // 插入新记录到临时数组
-    int pos = 0;
-    while (pos < leaf->keyCount) {
-        bool shouldInsert = std::visit([&key](const auto& a) -> bool {
-            return std::visit([&a](const auto& b) -> bool {
-                using T1 = std::decay_t<decltype(a)>;
-                using T2 = std::decay_t<decltype(b)>;
-                if constexpr (std::is_same_v<T1, T2>) {
-                    return b >= a;
-                } else {
-                    return false;
-                }
-            }, key);
-        }, tempKeys[pos]);
-        
-        if (shouldInsert) break;
-        pos++;
+    // 添加现有的键值对
+    for (int i = 0; i < leaf->keyCount; ++i) {
+        allEntries.emplace_back(leaf->keys[i], leaf->recordIds[i]);
     }
     
-    tempKeys.insert(tempKeys.begin() + pos, key);
-    tempRecordIds.insert(tempRecordIds.begin() + pos, recordId);
+    // 添加新的键值对
+    allEntries.emplace_back(key, recordId);
+    
+    // 按键排序所有条目
+    std::sort(allEntries.begin(), allEntries.end(), 
+        [this](const std::pair<Value, uint32_t>& a, const std::pair<Value, uint32_t>& b) {
+            return compareValues(a.first, b.first) < 0;
+        });
     
     // 计算分割点
-    int splitPoint = (tempKeys.size() + 1) / 2;
+    int splitPoint = (allEntries.size() + 1) / 2;
     
     // 清空原叶子节点并重新分配
     leaf->keys.clear();
@@ -358,15 +351,15 @@ void BPlusTree::splitLeafNode(BPlusTreeLeafNode* leaf, const Value& key, uint32_
     
     // 前半部分留在原节点
     for (int i = 0; i < splitPoint; ++i) {
-        leaf->keys.push_back(tempKeys[i]);
-        leaf->recordIds.push_back(tempRecordIds[i]);
+        leaf->keys.push_back(allEntries[i].first);
+        leaf->recordIds.push_back(allEntries[i].second);
         leaf->keyCount++;
     }
     
     // 后半部分放入新节点
-    for (int i = splitPoint; i < static_cast<int>(tempKeys.size()); ++i) {
-        newLeaf->keys.push_back(tempKeys[i]);
-        newLeaf->recordIds.push_back(tempRecordIds[i]);
+    for (int i = splitPoint; i < static_cast<int>(allEntries.size()); ++i) {
+        newLeaf->keys.push_back(allEntries[i].first);
+        newLeaf->recordIds.push_back(allEntries[i].second);
         newLeaf->keyCount++;
     }
     
@@ -378,7 +371,7 @@ void BPlusTree::splitLeafNode(BPlusTreeLeafNode* leaf, const Value& key, uint32_
     leaf->next = newLeaf;
     newLeaf->prev = leaf;
     
-    // 向父节点插入新的键
+    // 向父节点插入新的键（新叶子节点的第一个键）
     Value splitKey = newLeaf->keys[0];
     insertIntoParent(leaf, splitKey, newLeaf);
 }
@@ -388,9 +381,12 @@ void BPlusTree::insertIntoParent(BPlusTreeNode* left, const Value& key, BPlusTre
         // 创建新的根节点
         auto newRoot = new BPlusTreeInternalNode(maxKeys_);
         newRoot->isRoot = true;
-        newRoot->insertKey(key, 0);
-        newRoot->insertChild(left, 0);
-        newRoot->insertChild(right, 1);
+        
+        // 设置键和子节点
+        newRoot->keys.push_back(key);
+        newRoot->keyCount = 1;
+        newRoot->children.push_back(left);
+        newRoot->children.push_back(right);
         
         left->isRoot = false;
         left->parent = newRoot;
@@ -402,69 +398,51 @@ void BPlusTree::insertIntoParent(BPlusTreeNode* left, const Value& key, BPlusTre
     }
     
     auto parent = static_cast<BPlusTreeInternalNode*>(left->parent);
-    if (!parent->isFull()) {
-        // 父节点未满，直接插入
-        int pos = 0;
-        while (pos < parent->keyCount) {
-            bool shouldInsert = std::visit([&key](const auto& a) -> bool {
-                return std::visit([&a](const auto& b) -> bool {
-                    using T1 = std::decay_t<decltype(a)>;
-                    using T2 = std::decay_t<decltype(b)>;
-                    if constexpr (std::is_same_v<T1, T2>) {
-                        return b >= a;
-                    } else {
-                        return false;
-                    }
-                }, key);
-            }, parent->keys[pos]);
-            
-            if (shouldInsert) break;
-            pos++;
+    
+    // 收集所有现有的键和子节点，加上新的键和子节点
+    std::vector<Value> allKeys = parent->keys;
+    std::vector<BPlusTreeNode*> allChildren = parent->children;
+    
+    // 找到正确的插入位置
+    int insertPos = 0;
+    for (int i = 0; i < parent->keyCount; ++i) {
+        if (compareValues(key, parent->keys[i]) < 0) {
+            break;
         }
-        
-        parent->insertKey(key, pos);
-        parent->insertChild(right, pos + 1);
+        insertPos++;
+    }
+    
+    // 插入新键和右子节点
+    allKeys.insert(allKeys.begin() + insertPos, key);
+    allChildren.insert(allChildren.begin() + insertPos + 1, right);
+    
+    if (allKeys.size() <= static_cast<size_t>(maxKeys_)) {
+        // 父节点未满，直接更新
+        parent->keys = allKeys;
+        parent->children = allChildren;
+        parent->keyCount = allKeys.size();
         right->parent = parent;
     } else {
         // 父节点已满，需要分裂
-        splitInternalNode(parent, key, right);
+        splitInternalNodeWithData(parent, allKeys, allChildren);
     }
 }
 
 void BPlusTree::splitInternalNode(BPlusTreeInternalNode* internal, const Value& key, BPlusTreeNode* child) {
+    // 这个方法现在仅作为向后兼容
+    // 实际逻辑在insertIntoParent中处理
+}
+
+void BPlusTree::splitInternalNodeWithData(BPlusTreeInternalNode* internal, 
+                                         const std::vector<Value>& keys, 
+                                         const std::vector<BPlusTreeNode*>& children) {
     // 创建新的内部节点
     auto newInternal = new BPlusTreeInternalNode(maxKeys_);
     nodeCount_++;
     
-    // 临时存储所有键和子节点
-    std::vector<Value> tempKeys = internal->keys;
-    std::vector<BPlusTreeNode*> tempChildren = internal->children;
-    
-    // 找到插入位置
-    int pos = 0;
-    while (pos < internal->keyCount) {
-        bool shouldInsert = std::visit([&key](const auto& a) -> bool {
-            return std::visit([&a](const auto& b) -> bool {
-                using T1 = std::decay_t<decltype(a)>;
-                using T2 = std::decay_t<decltype(b)>;
-                if constexpr (std::is_same_v<T1, T2>) {
-                    return b >= a;
-                } else {
-                    return false;
-                }
-            }, key);
-        }, tempKeys[pos]);
-        
-        if (shouldInsert) break;
-        pos++;
-    }
-    
-    tempKeys.insert(tempKeys.begin() + pos, key);
-    tempChildren.insert(tempChildren.begin() + pos + 1, child);
-    
     // 计算分割点
-    int splitPoint = tempKeys.size() / 2;
-    Value splitKey = tempKeys[splitPoint];
+    int splitPoint = keys.size() / 2;
+    Value splitKey = keys[splitPoint];
     
     // 清空原节点
     internal->keys.clear();
@@ -473,22 +451,22 @@ void BPlusTree::splitInternalNode(BPlusTreeInternalNode* internal, const Value& 
     
     // 前半部分留在原节点
     for (int i = 0; i < splitPoint; ++i) {
-        internal->keys.push_back(tempKeys[i]);
+        internal->keys.push_back(keys[i]);
         internal->keyCount++;
     }
     for (int i = 0; i <= splitPoint; ++i) {
-        internal->children.push_back(tempChildren[i]);
-        tempChildren[i]->parent = internal;
+        internal->children.push_back(children[i]);
+        children[i]->parent = internal;
     }
     
     // 后半部分放入新节点
-    for (int i = splitPoint + 1; i < static_cast<int>(tempKeys.size()); ++i) {
-        newInternal->keys.push_back(tempKeys[i]);
+    for (int i = splitPoint + 1; i < static_cast<int>(keys.size()); ++i) {
+        newInternal->keys.push_back(keys[i]);
         newInternal->keyCount++;
     }
-    for (int i = splitPoint + 1; i < static_cast<int>(tempChildren.size()); ++i) {
-        newInternal->children.push_back(tempChildren[i]);
-        tempChildren[i]->parent = newInternal;
+    for (int i = splitPoint + 1; i < static_cast<int>(children.size()); ++i) {
+        newInternal->children.push_back(children[i]);
+        children[i]->parent = newInternal;
     }
     
     // 向父节点插入分割键
