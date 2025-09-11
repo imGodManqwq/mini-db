@@ -106,6 +106,9 @@ private:
     // 节点分裂和合并
     void splitLeafNode(BPlusTreeLeafNode* leaf, const Value& key, uint32_t recordId);
     void splitInternalNode(BPlusTreeInternalNode* internal, const Value& key, BPlusTreeNode* child);
+    void splitInternalNodeWithData(BPlusTreeInternalNode* internal, 
+                                  const std::vector<Value>& keys, 
+                                  const std::vector<BPlusTreeNode*>& children);
     void mergeLeafNodes(BPlusTreeLeafNode* left, BPlusTreeLeafNode* right);
     void mergeInternalNodes(BPlusTreeInternalNode* left, BPlusTreeInternalNode* right);
     
