@@ -41,14 +41,11 @@ uint32_t Table::insertRow(const Row& row) {
         throw std::invalid_argument("Row validation failed: column count mismatch");
     }
     
-<<<<<<< HEAD
-=======
     // 检查约束
     if (!validateConstraints(row)) {
         throw std::invalid_argument("Row validation failed: constraint violation");
     }
     
->>>>>>> origin/storage
     uint32_t recordId = allocateRecordId();
     
     // 如果有页面管理器，使用页式存储
@@ -70,8 +67,6 @@ uint32_t Table::insertRow(const std::vector<Value>& values) {
     return insertRow(row);
 }
 
-<<<<<<< HEAD
-=======
 uint32_t Table::fastInsertRow(const Row& row) {
     // 跳过所有验证和约束检查，直接插入
     uint32_t recordId = allocateRecordId();
@@ -90,7 +85,6 @@ uint32_t Table::fastInsertRow(const Row& row) {
     }
 }
 
->>>>>>> origin/storage
 bool Table::deleteRow(uint32_t recordId) {
     if (!pageManager_) {
         // 内存存储的删除逻辑（简化）
@@ -121,20 +115,6 @@ bool Table::updateRow(uint32_t recordId, const Row& newRow) {
         return false;
     }
     
-<<<<<<< HEAD
-    // 简化实现：先删除再插入
-    if (deleteRow(recordId)) {
-        try {
-            uint32_t newRecordId = insertRow(newRow);
-            // 更新记录ID映射（如果需要保持相同ID）
-            return true;
-        } catch (...) {
-            return false;
-        }
-    }
-    
-    return false;
-=======
     // 验证约束（排除当前正在更新的记录）
     if (!validateConstraints(newRow, recordId)) {
         return false;
@@ -198,7 +178,6 @@ bool Table::updateRow(uint32_t recordId, const Row& newRow) {
             }
         }
     }
->>>>>>> origin/storage
 }
 
 RowIterator Table::begin() const {
@@ -260,8 +239,6 @@ const std::string& Table::getTableName() const {
     return tableName_;
 }
 
-<<<<<<< HEAD
-=======
 std::vector<uint32_t> Table::getAllRecordIds() const {
     std::vector<uint32_t> recordIds;
     
@@ -280,7 +257,6 @@ std::vector<uint32_t> Table::getAllRecordIds() const {
     return recordIds;
 }
 
->>>>>>> origin/storage
 bool Table::validateRow(const Row& row) const {
     return row.getFieldCount() == columns_.size();
 }
@@ -294,13 +270,9 @@ std::string Table::serialize() const {
     // 序列化列信息
     oss << columns_.size() << "\n";
     for (const auto& col : columns_) {
-<<<<<<< HEAD
-        oss << col.name << "|" << static_cast<int>(col.type) << "\n";
-=======
         oss << col.name << "|" << static_cast<int>(col.type) 
             << "|" << (col.isNotNull ? 1 : 0) 
             << "|" << (col.isPrimaryKey ? 1 : 0) << "\n";
->>>>>>> origin/storage
     }
     
     // 序列化行数据
@@ -322,23 +294,11 @@ Table Table::deserialize(const std::string& data) {
     
     // 读取列数量
     std::getline(iss, line);
-<<<<<<< HEAD
-    size_t columnCount = std::stoull(line);
-=======
     auto columnCount = std::stoull(line);
->>>>>>> origin/storage
     
     std::vector<ColumnInfo> columns;
     for (size_t i = 0; i < columnCount; ++i) {
         std::getline(iss, line);
-<<<<<<< HEAD
-        size_t pipePos = line.find('|');
-        if (pipePos != std::string::npos) {
-            std::string colName = line.substr(0, pipePos);
-            int typeInt = std::stoi(line.substr(pipePos + 1));
-            DataType type = static_cast<DataType>(typeInt);
-            columns.emplace_back(colName, type);
-=======
         std::vector<std::string> parts;
         size_t pos = 0;
         size_t pipePos;
@@ -359,7 +319,6 @@ Table Table::deserialize(const std::string& data) {
             bool isPrimaryKey = (parts.size() > 3) ? (std::stoi(parts[3]) != 0) : false;
             
             columns.emplace_back(colName, type, isNotNull, isPrimaryKey);
->>>>>>> origin/storage
         }
     }
     
@@ -367,11 +326,7 @@ Table Table::deserialize(const std::string& data) {
     
     // 读取行数量
     std::getline(iss, line);
-<<<<<<< HEAD
-    size_t rowCount = std::stoull(line);
-=======
     auto rowCount = std::stoull(line);
->>>>>>> origin/storage
     
     for (size_t i = 0; i < rowCount; ++i) {
         std::getline(iss, line);
@@ -475,8 +430,6 @@ bool Table::insertRowToPage(const Row& row, uint32_t recordId) {
     return false;
 }
 
-<<<<<<< HEAD
-=======
 bool Table::fastInsertRowToPage(const Row& row, uint32_t recordId) {
     if (!pageManager_) {
         return false;
@@ -540,7 +493,6 @@ bool Table::fastInsertRowToPage(const Row& row, uint32_t recordId) {
     return false;
 }
 
->>>>>>> origin/storage
 void Table::loadRowsFromPages() {
     if (!pageManager_) {
         return;
@@ -557,8 +509,6 @@ void Table::loadRowsFromPages() {
             rows_.push_back(row);
         }
     }
-<<<<<<< HEAD
-=======
 }
 
 bool Table::validateConstraints(const Row& row) const {
@@ -763,5 +713,4 @@ int Table::getPrimaryKeyColumnIndex() const {
         }
     }
     return -1;
->>>>>>> origin/storage
 }
