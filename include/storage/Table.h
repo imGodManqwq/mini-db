@@ -9,16 +9,11 @@
 struct ColumnInfo {
     std::string name;
     DataType type;
-<<<<<<< HEAD
-    
-    ColumnInfo(const std::string& n, DataType t) : name(n), type(t) {}
-=======
     bool isNotNull;
     bool isPrimaryKey;
     
     ColumnInfo(const std::string& n, DataType t, bool notNull = false, bool primaryKey = false) 
         : name(n), type(t), isNotNull(notNull), isPrimaryKey(primaryKey) {}
->>>>>>> origin/storage
 };
 
 // 前向声明
@@ -39,11 +34,8 @@ public:
     // 数据操作
     uint32_t insertRow(const Row& row);  // 返回记录ID
     uint32_t insertRow(const std::vector<Value>& values);
-<<<<<<< HEAD
-=======
     // 超快速插入（跳过约束检查和立即写盘）
     uint32_t fastInsertRow(const Row& row);
->>>>>>> origin/storage
     bool deleteRow(uint32_t recordId);
     bool updateRow(uint32_t recordId, const Row& newRow);
     
@@ -58,11 +50,6 @@ public:
     
     // 表信息
     const std::string& getTableName() const;
-<<<<<<< HEAD
-    
-    // 数据验证
-    bool validateRow(const Row& row) const;
-=======
     std::vector<uint32_t> getAllRecordIds() const;
     
     // 数据验证
@@ -74,7 +61,6 @@ public:
     bool checkPrimaryKeyConstraint(const Row& row, uint32_t excludeRecordId) const;
     bool hasPrimaryKeyColumn() const;
     int getPrimaryKeyColumnIndex() const;
->>>>>>> origin/storage
     
     // 序列化（用于持久化）
     std::string serialize() const;
@@ -106,10 +92,7 @@ private:
     void buildColumnIndex();
     uint32_t allocateRecordId();
     bool insertRowToPage(const Row& row, uint32_t recordId);
-<<<<<<< HEAD
-=======
     // 快速插入到页面（跳过约束检查和立即写盘）
     bool fastInsertRowToPage(const Row& row, uint32_t recordId);
->>>>>>> origin/storage
     void loadRowsFromPages();  // 从页面加载数据到内存数组（用于迭代器兼容性）
 };

@@ -1,11 +1,8 @@
 #include "../../include/storage/IndexManager.h"
 #include <iostream>
 #include <algorithm>
-<<<<<<< HEAD
-=======
 #include <fstream>
 #include <sstream>
->>>>>>> origin/storage
 
 bool IndexManager::createIndex(const std::string& indexName, const std::string& tableName,
                               const std::string& columnName, IndexType type, bool isUnique) {
@@ -45,23 +42,6 @@ bool IndexManager::createIndex(const std::string& indexName, const std::string& 
         auto btree = std::make_unique<BPlusTree>();
         
         // 为现有数据建立索引
-<<<<<<< HEAD
-        uint32_t recordId = 0;
-        for (auto it = table->begin(); it != table->end(); ++it, ++recordId) {
-            Value columnValue = it->getValue(columnIndex);
-            
-            // 检查唯一性约束
-            if (isUnique) {
-                auto existingRecords = btree->search(columnValue);
-                if (!existingRecords.empty()) {
-                    std::cerr << "Unique constraint violation for value in column " 
-                              << columnName << std::endl;
-                    return false;
-                }
-            }
-            
-            btree->insert(columnValue, recordId);
-=======
         std::vector<uint32_t> allRecordIds = table->getAllRecordIds();
         
         for (uint32_t recordId : allRecordIds) {
@@ -81,7 +61,6 @@ bool IndexManager::createIndex(const std::string& indexName, const std::string& 
                 
                 btree->insert(columnValue, recordId);
             }
->>>>>>> origin/storage
         }
         
         indexes_[indexName] = std::move(btree);
@@ -167,17 +146,6 @@ bool IndexManager::deleteRecord(const std::string& tableName, const Row& row, ui
 
 bool IndexManager::updateRecord(const std::string& tableName, const Row& oldRow, 
                                const Row& newRow, uint32_t recordId) {
-<<<<<<< HEAD
-    // 先删除旧记录，再插入新记录
-    if (!deleteRecord(tableName, oldRow, recordId)) {
-        return false;
-    }
-    
-    if (!insertRecord(tableName, newRow, recordId)) {
-        // 如果插入失败，尝试回滚
-        insertRecord(tableName, oldRow, recordId);
-        return false;
-=======
     // 只更新那些索引列值发生变化的索引
     for (const auto& pair : indexInfos_) {
         const auto& indexInfo = pair.second;
@@ -210,7 +178,6 @@ bool IndexManager::updateRecord(const std::string& tableName, const Row& oldRow,
             indexIt->second->insert(oldColumnValue, recordId);
             return false;
         }
->>>>>>> origin/storage
     }
     
     return true;
@@ -370,8 +337,6 @@ bool IndexManager::validateIndexName(const std::string& indexName) const {
     
     return true;
 }
-<<<<<<< HEAD
-=======
 
 bool IndexManager::saveIndexes(const std::string& dbPath) const {
     try {
@@ -509,4 +474,3 @@ void IndexManager::rebuildIndexes() {
         std::cout << "Index '" << indexName << "' rebuilt successfully" << std::endl;
     }
 }
->>>>>>> origin/storage

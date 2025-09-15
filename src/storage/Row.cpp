@@ -52,11 +52,7 @@ Row Row::deserialize(const std::string& data) {
     
     // 读取字段数量
     std::getline(iss, token, '|');
-<<<<<<< HEAD
-    size_t fieldCount = std::stoull(token);
-=======
     auto fieldCount = std::stoull(token);
->>>>>>> origin/storage
     
     Row row;
     for (size_t i = 0; i < fieldCount; ++i) {

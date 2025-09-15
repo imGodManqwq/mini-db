@@ -86,35 +86,14 @@ std::vector<uint32_t> BPlusTreeLeafNode::findRecords(const Value& key) const {
 std::vector<uint32_t> BPlusTreeLeafNode::findRecordsInRange(const Value& startKey, const Value& endKey) const {
     std::vector<uint32_t> result;
     for (int i = 0; i < keyCount; ++i) {
-<<<<<<< HEAD
         // 简化范围比较
-=======
-        // 改进的范围比较，支持数值类型之间的转换
->>>>>>> origin/storage
         bool inRange = std::visit([&startKey, &endKey](const auto& keyVal) -> bool {
             return std::visit([&keyVal, &endKey](const auto& start) -> bool {
                 return std::visit([&keyVal, &start](const auto& end) -> bool {
                     using T = std::decay_t<decltype(keyVal)>;
                     using T1 = std::decay_t<decltype(start)>;
                     using T2 = std::decay_t<decltype(end)>;
-<<<<<<< HEAD
                     if constexpr (std::is_same_v<T, T1> && std::is_same_v<T, T2>) {
-=======
-                    
-                    // 支持数值类型之间的比较
-                    if constexpr (std::is_arithmetic_v<T> && std::is_arithmetic_v<T1> && std::is_arithmetic_v<T2>) {
-                        double key = static_cast<double>(keyVal);
-                        double startVal = static_cast<double>(start);
-                        double endVal = static_cast<double>(end);
-                        return key >= startVal && key <= endVal;
-                    }
-                    // 字符串类型的比较
-                    else if constexpr (std::is_same_v<T, std::string> && std::is_same_v<T1, std::string> && std::is_same_v<T2, std::string>) {
-                        return keyVal >= start && keyVal <= end;
-                    }
-                    // 相同类型的比较
-                    else if constexpr (std::is_same_v<T, T1> && std::is_same_v<T, T2>) {
->>>>>>> origin/storage
                         return keyVal >= start && keyVal <= end;
                     }
                     return false;

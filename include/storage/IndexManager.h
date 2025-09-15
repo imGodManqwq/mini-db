@@ -56,14 +56,11 @@ public:
     void registerTable(std::shared_ptr<Table> table);
     void unregisterTable(const std::string& tableName);
     
-<<<<<<< HEAD
-=======
     // 持久化
     bool saveIndexes(const std::string& dbPath) const;
     bool loadIndexes(const std::string& dbPath);
     void rebuildIndexes(); // 重建索引（加载后调用）
     
->>>>>>> origin/storage
     // 调试和统计
     void printIndexStats() const;
     void printIndexInfo(const std::string& indexName) const;
