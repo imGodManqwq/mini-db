@@ -1,6 +1,11 @@
 #include "../../include/storage/IndexManager.h"
 #include <iostream>
 #include <algorithm>
+<<<<<<< HEAD
+=======
+#include <fstream>
+#include <sstream>
+>>>>>>> origin/storage
 
 bool IndexManager::createIndex(const std::string& indexName, const std::string& tableName,
                               const std::string& columnName, IndexType type, bool isUnique) {
@@ -40,6 +45,7 @@ bool IndexManager::createIndex(const std::string& indexName, const std::string& 
         auto btree = std::make_unique<BPlusTree>();
         
         // 为现有数据建立索引
+<<<<<<< HEAD
         uint32_t recordId = 0;
         for (auto it = table->begin(); it != table->end(); ++it, ++recordId) {
             Value columnValue = it->getValue(columnIndex);
@@ -55,6 +61,27 @@ bool IndexManager::createIndex(const std::string& indexName, const std::string& 
             }
             
             btree->insert(columnValue, recordId);
+=======
+        std::vector<uint32_t> allRecordIds = table->getAllRecordIds();
+        
+        for (uint32_t recordId : allRecordIds) {
+            Row row = table->getRow(recordId);
+            if (row.getFieldCount() > 0) {
+                Value columnValue = row.getValue(columnIndex);
+                
+                // 检查唯一性约束
+                if (isUnique) {
+                    auto existingRecords = btree->search(columnValue);
+                    if (!existingRecords.empty()) {
+                        std::cerr << "Unique constraint violation for value in column " 
+                                  << columnName << std::endl;
+                        return false;
+                    }
+                }
+                
+                btree->insert(columnValue, recordId);
+            }
+>>>>>>> origin/storage
         }
         
         indexes_[indexName] = std::move(btree);
@@ -140,6 +167,7 @@ bool IndexManager::deleteRecord(const std::string& tableName, const Row& row, ui
 
 bool IndexManager::updateRecord(const std::string& tableName, const Row& oldRow, 
                                const Row& newRow, uint32_t recordId) {
+<<<<<<< HEAD
     // 先删除旧记录，再插入新记录
     if (!deleteRecord(tableName, oldRow, recordId)) {
         return false;
@@ -149,6 +177,40 @@ bool IndexManager::updateRecord(const std::string& tableName, const Row& oldRow,
         // 如果插入失败，尝试回滚
         insertRecord(tableName, oldRow, recordId);
         return false;
+=======
+    // 只更新那些索引列值发生变化的索引
+    for (const auto& pair : indexInfos_) {
+        const auto& indexInfo = pair.second;
+        if (indexInfo->tableName != tableName) continue;
+        
+        const std::string& indexName = pair.first;
+        
+        // 提取旧值和新值
+        Value oldColumnValue = extractColumnValue(oldRow, tableName, indexInfo->columnName);
+        Value newColumnValue = extractColumnValue(newRow, tableName, indexInfo->columnName);
+        
+        // 如果值没有变化，跳过这个索引
+        if (oldColumnValue == newColumnValue) {
+            continue;
+        }
+        
+        auto indexIt = indexes_.find(indexName);
+        if (indexIt == indexes_.end()) continue;
+        
+        // 删除旧记录
+        if (!indexIt->second->remove(oldColumnValue, recordId)) {
+            std::cerr << "Failed to remove from index: " << indexName << std::endl;
+            return false;
+        }
+        
+        // 插入新记录
+        if (!indexIt->second->insert(newColumnValue, recordId)) {
+            std::cerr << "Failed to insert into index: " << indexName << std::endl;
+            // 尝试回滚
+            indexIt->second->insert(oldColumnValue, recordId);
+            return false;
+        }
+>>>>>>> origin/storage
     }
     
     return true;
@@ -308,3 +370,143 @@ bool IndexManager::validateIndexName(const std::string& indexName) const {
     
     return true;
 }
+<<<<<<< HEAD
+=======
+
+bool IndexManager::saveIndexes(const std::string& dbPath) const {
+    try {
+        std::string indexPath = dbPath + "/indexes.meta";
+        std::ofstream file(indexPath);
+        if (!file.is_open()) {
+            std::cerr << "Failed to open index metadata file for writing: " << indexPath << std::endl;
+            return false;
+        }
+        
+        // 写入索引数量
+        file << indexInfos_.size() << std::endl;
+        
+        // 写入每个索引的信息
+        for (const auto& pair : indexInfos_) {
+            const auto& indexInfo = pair.second;
+            file << indexInfo->indexName << "|"
+                 << indexInfo->tableName << "|"
+                 << indexInfo->columnName << "|"
+                 << static_cast<int>(indexInfo->indexType) << "|"
+                 << (indexInfo->isUnique ? 1 : 0) << std::endl;
+        }
+        
+        file.close();
+        
+        // 保存每个B+树的数据
+        for (const auto& pair : indexes_) {
+            const std::string& indexName = pair.first;
+            const auto& btree = pair.second;
+            
+            std::string indexDataPath = dbPath + "/" + indexName + ".index";
+            // TODO: 实现B+树的序列化保存
+            // btree->saveToDisk(indexDataPath);
+        }
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Error saving indexes: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool IndexManager::loadIndexes(const std::string& dbPath) {
+    try {
+        std::string indexPath = dbPath + "/indexes.meta";
+        std::ifstream file(indexPath);
+        if (!file.is_open()) {
+            // 索引文件不存在，可能是新数据库
+            return true;
+        }
+        
+        std::string line;
+        
+        // 读取索引数量
+        if (!std::getline(file, line)) {
+            return true; // 空文件
+        }
+        
+        auto indexCount = std::stoull(line);
+        
+        // 读取每个索引的信息
+        for (size_t i = 0; i < indexCount; ++i) {
+            if (!std::getline(file, line)) {
+                break;
+            }
+            
+            std::vector<std::string> parts;
+            size_t pos = 0;
+            size_t pipePos;
+            
+            // 分割字符串
+            while ((pipePos = line.find('|', pos)) != std::string::npos) {
+                parts.push_back(line.substr(pos, pipePos - pos));
+                pos = pipePos + 1;
+            }
+            parts.push_back(line.substr(pos));
+            
+            if (parts.size() >= 5) {
+                std::string indexName = parts[0];
+                std::string tableName = parts[1];
+                std::string columnName = parts[2];
+                IndexType indexType = static_cast<IndexType>(std::stoi(parts[3]));
+                bool isUnique = (std::stoi(parts[4]) != 0);
+                
+                // 重新创建索引（不创建B+树实例，等表加载完成后再创建）
+                auto indexInfo = std::make_unique<IndexInfo>(indexName, tableName, columnName, indexType, isUnique);
+                indexInfos_[indexName] = std::move(indexInfo);
+            }
+        }
+        
+        file.close();
+        
+        // 重建B+树索引（需要在所有表加载完成后调用rebuildIndexes）
+        return true;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading indexes: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+void IndexManager::rebuildIndexes() {
+    for (const auto& pair : indexInfos_) {
+        const std::string& indexName = pair.first;
+        const auto& indexInfo = pair.second;
+        
+        // 检查表是否存在
+        auto tableIt = tables_.find(indexInfo->tableName);
+        if (tableIt == tables_.end()) {
+            std::cerr << "Warning: Table '" << indexInfo->tableName 
+                      << "' not found for index '" << indexName << "'" << std::endl;
+            continue;
+        }
+        
+        // 创建B+树实例
+        auto btree = std::make_unique<BPlusTree>(10); // 使用默认阶数
+        
+        // 重建索引数据
+        auto table = tableIt->second;
+        
+        // 获取所有实际的recordId
+        std::vector<uint32_t> allRecordIds = table->getAllRecordIds();
+        
+        for (uint32_t recordId : allRecordIds) {
+            Row row = table->getRow(recordId);
+            if (row.getFieldCount() > 0) {
+                Value columnValue = extractColumnValue(row, indexInfo->tableName, indexInfo->columnName);
+                btree->insert(columnValue, recordId);
+            }
+        }
+        
+        indexes_[indexName] = std::move(btree);
+        
+        std::cout << "Index '" << indexName << "' rebuilt successfully" << std::endl;
+    }
+}
+>>>>>>> origin/storage

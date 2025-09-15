@@ -53,8 +53,13 @@ bool Page::insertRecord(const std::string& record) {
     slots_[slotId] = header_.freeSpaceOffset;
     
     // 更新页头
+<<<<<<< HEAD
     header_.freeSpaceOffset += recordSize;
     header_.freeSpaceSize -= recordSize;
+=======
+    header_.freeSpaceOffset += static_cast<uint16_t>(recordSize);
+    header_.freeSpaceSize -= static_cast<uint16_t>(recordSize);
+>>>>>>> origin/storage
     if (slotId >= header_.slotCount) {
         header_.slotCount = slotId + 1;
     }
@@ -90,8 +95,13 @@ uint16_t Page::insertRecordAndReturnSlot(const std::string& record) {
     slots_[slotId] = header_.freeSpaceOffset;
     
     // 更新页头
+<<<<<<< HEAD
     header_.freeSpaceOffset += recordSize;
     header_.freeSpaceSize -= recordSize;
+=======
+    header_.freeSpaceOffset += static_cast<uint16_t>(recordSize);
+    header_.freeSpaceSize -= static_cast<uint16_t>(recordSize);
+>>>>>>> origin/storage
     if (slotId >= header_.slotCount) {
         header_.slotCount = slotId + 1;
     }
@@ -237,7 +247,11 @@ uint16_t Page::findFreeSlot() const {
             return i;
         }
     }
+<<<<<<< HEAD
     return slots_.size();
+=======
+    return static_cast<uint16_t>(slots_.size());
+>>>>>>> origin/storage
 }
 
 void Page::compactPage() {

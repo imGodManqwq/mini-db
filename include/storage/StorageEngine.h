@@ -22,6 +22,10 @@ public:
     // 数据操作
     bool insertRow(const std::string& tableName, const Row& row);
     bool insertRow(const std::string& tableName, const std::vector<Value>& values);
+    // 批量插入优化
+    size_t batchInsertRows(const std::string& tableName, const std::vector<std::vector<Value>>& batchData);
+    // 快速批量插入（不更新索引，需要手动重建索引）
+    size_t fastBatchInsertRows(const std::string& tableName, const std::vector<std::vector<Value>>& batchData);
     bool deleteRow(const std::string& tableName, const Row& row, uint32_t recordId);
     bool updateRow(const std::string& tableName, const Row& oldRow, const Row& newRow, uint32_t recordId);
     
@@ -29,6 +33,12 @@ public:
     bool createIndex(const std::string& indexName, const std::string& tableName, 
                     const std::string& columnName, bool isUnique = false);
     bool dropIndex(const std::string& indexName);
+    // 重建表的所有索引
+    void rebuildTableIndexes(const std::string& tableName);
+    // 强制写入所有脏页面
+    void flushAllPages();
+    // 检查索引是否存在
+    bool indexExists(const std::string& indexName) const;
     
     // 查询操作（支持索引）
     std::vector<uint32_t> searchByIndex(const std::string& indexName, const Value& key);
