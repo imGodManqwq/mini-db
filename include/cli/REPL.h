@@ -9,7 +9,7 @@
 
 class REPL {
 public:
-    explicit REPL(const std::string& dbPath = "./minidb");
+    explicit REPL(const std::string& dbPath = "./data");
     ~REPL();
     
     void run();             // 启动 REPL 主循环
