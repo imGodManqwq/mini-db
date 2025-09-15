@@ -23,4 +23,4 @@ file(GLOB SOURCES
 )
 
 # 生成可执行文件
-add_executable(mini_db_ai ${SOURCES})
+add_executable(mini_db ${SOURCES})
