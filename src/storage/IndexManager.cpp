@@ -134,9 +134,28 @@ bool IndexManager::deleteRecord(const std::string& tableName, const Row& row, ui
         // 提取列值
         Value columnValue = extractColumnValue(row, tableName, indexInfo->columnName);
         
+        // 检查索引中是否存在这个键值对（用于调试，可选）
+        // auto existingRecords = indexIt->second->search(columnValue);
+        
         // 从索引中删除
-        if (!indexIt->second->remove(columnValue, recordId)) {
-            std::cerr << "Failed to remove from index: " << indexName << std::endl;
+        bool removeSuccess = indexIt->second->remove(columnValue, recordId);
+        
+        // 如果删除失败，可能是因为索引中存储的recordId与传入的不一致
+        // 尝试使用主键值作为recordId进行删除（兼容性修复）
+        if (!removeSuccess && indexInfo->columnName == "id") {
+            // 对于主键索引，尝试使用主键值作为recordId
+            if (std::holds_alternative<int>(columnValue)) {
+                uint32_t pkValueAsRecordId = static_cast<uint32_t>(std::get<int>(columnValue));
+                removeSuccess = indexIt->second->remove(columnValue, pkValueAsRecordId);
+                // 成功使用主键值作为recordId删除索引记录
+            }
+        }
+        
+        if (!removeSuccess) {
+            std::cerr << "Failed to remove from index: " << indexName 
+                      << " (key=" << std::visit([](const auto& v) -> std::string {
+                          std::ostringstream oss; oss << v; return oss.str();
+                      }, columnValue) << ", recordId=" << recordId << ")" << std::endl;
             return false;
         }
     }

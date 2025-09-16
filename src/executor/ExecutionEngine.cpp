@@ -1,5 +1,7 @@
 #include "../../include/executor/ExecutionEngine.h"
 #include "../../include/executor/IndexScanExecutor.h"
+#include "../../include/executor/DropTableExecutor.h"
+#include "../../include/executor/DeleteExecutor.h"
 #include "../../include/parser/AST.h"
 #include <iostream>
 #include <chrono>
@@ -108,6 +110,13 @@ std::unique_ptr<ExecutionPlan> ExecutionEngine::generateExecutionPlan(Statement*
             break;
         }
         
+        case ASTNodeType::DROP_TABLE_STMT: {
+            auto* dropStmt = static_cast<DropTableStatement*>(statement);
+            executor = createDropTableExecutor(dropStmt);
+            planDesc = "DropTable(" + dropStmt->tableName + ")";
+            break;
+        }
+        
         case ASTNodeType::CREATE_INDEX_STMT: {
             auto* createIndexStmt = static_cast<CreateIndexStatement*>(statement);
             executor = createCreateIndexExecutor(createIndexStmt);
@@ -191,6 +200,10 @@ std::unique_ptr<Executor> ExecutionEngine::createCreateTableExecutor(CreateTable
     return std::make_unique<CreateTableExecutor>(context_.get(), stmt);
 }
 
+std::unique_ptr<Executor> ExecutionEngine::createDropTableExecutor(DropTableStatement* stmt) {
+    return std::make_unique<DropTableExecutor>(context_.get(), stmt);
+}
+
 std::unique_ptr<Executor> ExecutionEngine::createCreateIndexExecutor(CreateIndexStatement* stmt) {
     return std::make_unique<CreateIndexExecutor>(context_.get(), stmt);
 }
@@ -257,10 +270,7 @@ std::unique_ptr<Executor> ExecutionEngine::createSelectExecutor(SelectStatement*
 }
 
 std::unique_ptr<Executor> ExecutionEngine::createDeleteExecutor(DeleteStatement* stmt) {
-    // 简化实现：DELETE暂时不实现完整的执行器
-    // 在实际项目中，这里应该创建一个DeleteExecutor
-    context_->setError("DELETE executor not yet implemented");
-    return nullptr;
+    return std::make_unique<DeleteExecutor>(context_.get(), stmt);
 }
 
 std::unique_ptr<Executor> ExecutionEngine::createUpdateExecutor(UpdateStatement* stmt) {

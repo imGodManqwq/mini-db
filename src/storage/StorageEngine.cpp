@@ -40,11 +40,11 @@ bool StorageEngine::createTable(const std::string& tableName, const std::vector<
         if (column.isPrimaryKey) {
             std::string pkIndexName = "pk_" + tableName + "_" + column.name;
             bool indexCreated = indexManager_->createIndex(pkIndexName, tableName, column.name, IndexType::BTREE, true);
-            // if (indexCreated) {
-            //     std::cout << "Primary key index '" << pkIndexName << "' created automatically" << std::endl;
-            // } else {
-            //     std::cerr << "Warning: Failed to create primary key index for column '" << column.name << "'" << std::endl;
-            // }
+            if (indexCreated) {
+                std::cout << "Primary key index '" << pkIndexName << "' created automatically" << std::endl;
+            } else {
+                std::cerr << "Warning: Failed to create primary key index for column '" << column.name << "'" << std::endl;
+            }
             break; // 只应该有一个主键
         }
     }
@@ -240,14 +240,18 @@ bool StorageEngine::deleteRow(const std::string& tableName, const Row& row, uint
         return false;
     }
     
-    // 从索引中删除
-    if (!indexManager_->deleteRecord(tableName, row, recordId)) {
-        std::cerr << "Failed to remove from indexes" << std::endl;
+    // 先从索引中删除，因为删除表记录后recordId可能失效
+    bool indexDeleteSuccess = indexManager_->deleteRecord(tableName, row, recordId);
+    if (!indexDeleteSuccess) {
+        std::cerr << "Warning: Failed to remove from indexes for record " << recordId << std::endl;
+    }
+    
+    // 然后从表中删除行
+    if (!table->deleteRow(recordId)) {
+        std::cerr << "Failed to delete row from table" << std::endl;
         return false;
     }
     
-    // 这里应该实现从表中删除行的逻辑
-    // 简化处理，实际需要根据recordId从表中删除对应行
     std::cout << "Row deleted from table " << tableName << std::endl;
     return true;
 }
@@ -272,7 +276,7 @@ bool StorageEngine::updateRow(const std::string& tableName, const Row& oldRow, c
         return false;
     }
     
-    // std::cout << "Row updated successfully in table " << tableName << std::endl;
+    std::cout << "Row updated successfully in table " << tableName << std::endl;
     return true;
 }
 

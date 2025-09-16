@@ -172,6 +172,22 @@ std::string CreateTableStatement::toString(int indent) const
     return result;
 }
 
+// DropTableStatement实现
+void DropTableStatement::accept(ASTVisitor *visitor)
+{
+    visitor->visit(this);
+}
+
+std::string DropTableStatement::toString(int indent) const
+{
+    std::string result = getIndent(indent) + "DropTableStatement: " + tableName;
+    if (ifExists)
+    {
+        result += " (IF EXISTS)";
+    }
+    return result;
+}
+
 // InsertStatement实现
 void InsertStatement::accept(ASTVisitor *visitor)
 {
@@ -369,6 +385,11 @@ void ASTPrinter::visit(ColumnDefinition *node)
 }
 
 void ASTPrinter::visit(CreateTableStatement *node)
+{
+    std::cout << node->toString();
+}
+
+void ASTPrinter::visit(DropTableStatement *node)
 {
     std::cout << node->toString();
 }

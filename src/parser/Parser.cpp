@@ -14,6 +14,10 @@ std::unique_ptr<Statement> Parser::parseStatement()
         {
             return parseCreateStatement();
         }
+        else if (match(TokenType::DROP))
+        {
+            return parseDropStatement();
+        }
         else if (match(TokenType::INSERT))
         {
             return parseInsertStatement();
@@ -180,6 +184,55 @@ std::unique_ptr<Statement> Parser::parseCreateStatement()
         addError("Expected 'TABLE' or 'INDEX' after 'CREATE'");
         return nullptr;
     }
+}
+
+std::unique_ptr<Statement> Parser::parseDropStatement()
+{
+    if (check(TokenType::TABLE))
+    {
+        return parseDropTableStatement();
+    }
+    else
+    {
+        addError("Expected 'TABLE' after 'DROP'");
+        return nullptr;
+    }
+}
+
+std::unique_ptr<Statement> Parser::parseDropTableStatement()
+{
+    consume(TokenType::TABLE, "Expected 'TABLE' after 'DROP'");
+
+    // 检查是否有 IF EXISTS 子句
+    bool ifExists = false;
+    if (check(TokenType::IF))
+    {
+        advance(); // consume IF
+        if (check(TokenType::EXISTS))
+        {
+            advance(); // consume EXISTS
+            ifExists = true;
+        }
+        else
+        {
+            addError("Expected 'EXISTS' after 'IF'");
+            return nullptr;
+        }
+    }
+
+    Token tableName = consume(TokenType::IDENTIFIER, "Expected table name");
+    if (tableName.type == TokenType::ERROR)
+    {
+        return nullptr;
+    }
+
+    // 可选的分号
+    if (check(TokenType::SEMICOLON))
+    {
+        advance();
+    }
+
+    return std::make_unique<DropTableStatement>(tableName.value, ifExists);
 }
 
 std::unique_ptr<Statement> Parser::parseCreateTableStatement()

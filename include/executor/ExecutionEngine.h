@@ -84,6 +84,7 @@ private:
     
     // 执行计划生成方法
     std::unique_ptr<Executor> createCreateTableExecutor(CreateTableStatement* stmt);
+    std::unique_ptr<Executor> createDropTableExecutor(DropTableStatement* stmt);
     std::unique_ptr<Executor> createCreateIndexExecutor(CreateIndexStatement* stmt);
     std::unique_ptr<Executor> createInsertExecutor(InsertStatement* stmt);
     std::unique_ptr<Executor> createSelectExecutor(SelectStatement* stmt);
