@@ -40,11 +40,11 @@ bool StorageEngine::createTable(const std::string& tableName, const std::vector<
         if (column.isPrimaryKey) {
             std::string pkIndexName = "pk_" + tableName + "_" + column.name;
             bool indexCreated = indexManager_->createIndex(pkIndexName, tableName, column.name, IndexType::BTREE, true);
-            if (indexCreated) {
-                std::cout << "Primary key index '" << pkIndexName << "' created automatically" << std::endl;
-            } else {
-                std::cerr << "Warning: Failed to create primary key index for column '" << column.name << "'" << std::endl;
-            }
+            // if (indexCreated) {
+            //     std::cout << "Primary key index '" << pkIndexName << "' created automatically" << std::endl;
+            // } else {
+            //     std::cerr << "Warning: Failed to create primary key index for column '" << column.name << "'" << std::endl;
+            // }
             break; // 只应该有一个主键
         }
     }
@@ -272,7 +272,7 @@ bool StorageEngine::updateRow(const std::string& tableName, const Row& oldRow, c
         return false;
     }
     
-    std::cout << "Row updated successfully in table " << tableName << std::endl;
+    // std::cout << "Row updated successfully in table " << tableName << std::endl;
     return true;
 }
 
