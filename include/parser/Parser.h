@@ -64,6 +64,8 @@ private:
     // 语句解析方法
     std::unique_ptr<Statement> parseCreateStatement();
     std::unique_ptr<Statement> parseCreateTableStatement();
+    std::unique_ptr<Statement> parseDropStatement();
+    std::unique_ptr<Statement> parseDropTableStatement();
     std::unique_ptr<Statement> parseCreateIndexStatement(bool isUnique);
     std::unique_ptr<Statement> parseInsertStatement();
     std::unique_ptr<Statement> parseSelectStatement();

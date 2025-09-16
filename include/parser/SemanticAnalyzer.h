@@ -91,6 +91,7 @@ public:
     void visit(JoinClause *node) override;
     void visit(ColumnDefinition *node) override;
     void visit(CreateTableStatement *node) override;
+    void visit(DropTableStatement *node) override;
     void visit(InsertStatement *node) override;
     void visit(SelectStatement *node) override;
     void visit(DeleteStatement *node) override;
@@ -118,6 +119,7 @@ private:
 
     // 特定语句分析
     void analyzeCreateTable(CreateTableStatement *stmt);
+    void analyzeDropTable(DropTableStatement *stmt);
     void analyzeInsert(InsertStatement *stmt);
     void analyzeSelect(SelectStatement *stmt);
     void analyzeDelete(DeleteStatement *stmt);

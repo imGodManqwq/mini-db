@@ -22,6 +22,7 @@ enum class ASTNodeType
 {
     // 语句类型
     CREATE_TABLE_STMT,
+    DROP_TABLE_STMT,
     CREATE_INDEX_STMT,
     INSERT_STMT,
     SELECT_STMT,
@@ -162,6 +163,20 @@ public:
 
     explicit CreateTableStatement(const std::string &name)
         : Statement(ASTNodeType::CREATE_TABLE_STMT), tableName(name) {}
+
+    void accept(ASTVisitor *visitor) override;
+    std::string toString(int indent = 0) const override;
+};
+
+// DROP TABLE语句
+class DropTableStatement : public Statement
+{
+public:
+    std::string tableName;
+    bool ifExists; // IF EXISTS 子句（可选）
+
+    explicit DropTableStatement(const std::string &name, bool ifExistsFlag = false)
+        : Statement(ASTNodeType::DROP_TABLE_STMT), tableName(name), ifExists(ifExistsFlag) {}
 
     void accept(ASTVisitor *visitor) override;
     std::string toString(int indent = 0) const override;
@@ -308,6 +323,7 @@ public:
     virtual void visit(JoinClause *node) = 0;
     virtual void visit(ColumnDefinition *node) = 0;
     virtual void visit(CreateTableStatement *node) = 0;
+    virtual void visit(DropTableStatement *node) = 0;
     virtual void visit(CreateIndexStatement *node) = 0;
     virtual void visit(InsertStatement *node) = 0;
     virtual void visit(SelectStatement *node) = 0;
@@ -327,6 +343,7 @@ public:
     void visit(JoinClause *node) override;
     void visit(ColumnDefinition *node) override;
     void visit(CreateTableStatement *node) override;
+    void visit(DropTableStatement *node) override;
     void visit(CreateIndexStatement *node) override;
     void visit(InsertStatement *node) override;
     void visit(SelectStatement *node) override;

@@ -248,6 +248,11 @@ void SemanticAnalyzer::visit(CreateTableStatement *node)
     analyzeCreateTable(node);
 }
 
+void SemanticAnalyzer::visit(DropTableStatement *node)
+{
+    analyzeDropTable(node);
+}
+
 void SemanticAnalyzer::visit(InsertStatement *node)
 {
     analyzeInsert(node);
@@ -355,6 +360,30 @@ void SemanticAnalyzer::analyzeCreateTable(CreateTableStatement *stmt)
             }
         }
     }
+}
+
+void SemanticAnalyzer::analyzeDropTable(DropTableStatement *stmt)
+{
+    currentTable_ = stmt->tableName;
+
+    // 检查表名
+    if (stmt->tableName.empty())
+    {
+        addError(SemanticErrorType::EMPTY_TABLE_NAME, "Table name cannot be empty");
+        return;
+    }
+
+    // 如果不是 IF EXISTS 模式，检查表是否存在
+    if (!stmt->ifExists)
+    {
+        if (!catalog_->tableExists(stmt->tableName))
+        {
+            addError(SemanticErrorType::TABLE_NOT_EXISTS,
+                     "Table '" + stmt->tableName + "' does not exist");
+            return;
+        }
+    }
+    // 如果是 IF EXISTS 模式，不管表是否存在都不报错
 }
 
 void SemanticAnalyzer::analyzeInsert(InsertStatement *stmt)
