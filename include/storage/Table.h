@@ -95,4 +95,5 @@ private:
     // 快速插入到页面（跳过约束检查和立即写盘）
     bool fastInsertRowToPage(const Row& row, uint32_t recordId);
     void loadRowsFromPages();  // 从页面加载数据到内存数组（用于迭代器兼容性）
+    void rebuildPageRecordLocations(uint32_t pageId);  // 重建指定页面的记录映射
 };

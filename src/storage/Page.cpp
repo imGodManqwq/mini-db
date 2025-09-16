@@ -259,6 +259,6 @@ void Page::compactPage() {
     
     // 重新插入所有记录
     for (const auto& record : validRecords) {
-        insertRecord(record);
+        insertRecordAndReturnSlot(record);
     }
 }

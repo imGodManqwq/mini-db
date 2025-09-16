@@ -102,12 +102,62 @@ bool Table::deleteRow(uint32_t recordId) {
     }
     
     bool result = page->deleteRecord(it->second.slotId);
+    
     if (result) {
+        // 在删除迭代器之前保存pageId
+        uint32_t pageId = it->second.pageId;
         recordLocations_.erase(it);
+        
+        // compactPage()可能改变了页面中其他记录的slot分配，需要重建该页面的映射
+        rebuildPageRecordLocations(pageId);
+        
         pageManager_->writePage(page);
     }
     
     return result;
+}
+
+void Table::rebuildPageRecordLocations(uint32_t pageId) {
+    auto page = pageManager_->getPage(pageId);
+    if (!page) {
+        return;
+    }
+    
+    // 先移除该页面的所有映射
+    std::vector<uint32_t> recordIdsToRemove;
+    for (const auto& pair : recordLocations_) {
+        if (pair.second.pageId == pageId) {
+            recordIdsToRemove.push_back(pair.first);
+        }
+    }
+    
+    for (uint32_t recordId : recordIdsToRemove) {
+        recordLocations_.erase(recordId);
+    }
+    
+    // 重新扫描页面，建立新的映射
+    uint16_t slotCount = page->getSlotCount();
+    
+    for (uint16_t slotId = 0; slotId < slotCount; ++slotId) {
+        std::string recordData = page->getRecord(slotId);
+        if (!recordData.empty()) {
+            // 从记录数据中提取recordId
+            Row row = Row::deserialize(recordData);
+            if (row.getFieldCount() > 0) {
+                // 假设第一个字段是主键（recordId）
+                auto firstField = row.getValue(0);
+                uint32_t recordId = 0;
+                if (std::holds_alternative<int>(firstField)) {
+                    recordId = static_cast<uint32_t>(std::get<int>(firstField));
+                } else {
+                    continue;
+                }
+                
+                // 建立新的映射
+                recordLocations_[recordId] = RecordLocation(pageId, slotId);
+            }
+        }
+    }
 }
 
 bool Table::updateRow(uint32_t recordId, const Row& newRow) {

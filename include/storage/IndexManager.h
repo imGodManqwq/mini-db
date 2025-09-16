@@ -60,6 +60,7 @@ public:
     bool saveIndexes(const std::string& dbPath) const;
     bool loadIndexes(const std::string& dbPath);
     void rebuildIndexes(); // 重建索引（加载后调用）
+    bool rebuildTableIndexes(const std::string& tableName); // 重建特定表的索引
     
     // 调试和统计
     void printIndexStats() const;

@@ -134,29 +134,28 @@ bool IndexManager::deleteRecord(const std::string& tableName, const Row& row, ui
         // 提取列值
         Value columnValue = extractColumnValue(row, tableName, indexInfo->columnName);
         
-        // 检查索引中是否存在这个键值对（用于调试，可选）
-        // auto existingRecords = indexIt->second->search(columnValue);
+        // 先查找所有匹配的记录
+        auto existingRecords = indexIt->second->search(columnValue);
         
-        // 从索引中删除
-        bool removeSuccess = indexIt->second->remove(columnValue, recordId);
+        // 如果索引中没有该键，跳过
+        if (existingRecords.empty()) {
+            continue;
+        }
         
-        // 如果删除失败，可能是因为索引中存储的recordId与传入的不一致
-        // 尝试使用主键值作为recordId进行删除（兼容性修复）
-        if (!removeSuccess && indexInfo->columnName == "id") {
-            // 对于主键索引，尝试使用主键值作为recordId
-            if (std::holds_alternative<int>(columnValue)) {
-                uint32_t pkValueAsRecordId = static_cast<uint32_t>(std::get<int>(columnValue));
-                removeSuccess = indexIt->second->remove(columnValue, pkValueAsRecordId);
-                // 成功使用主键值作为recordId删除索引记录
+        // 尝试删除所有匹配的记录（解决recordId不一致问题）
+        int removedCount = 0;
+        for (uint32_t existingRecordId : existingRecords) {
+            if (indexIt->second->remove(columnValue, existingRecordId)) {
+                removedCount++;
             }
         }
         
-        if (!removeSuccess) {
-            std::cerr << "Failed to remove from index: " << indexName 
+        // 如果没有成功删除任何记录，显示警告
+        if (removedCount == 0) {
+            std::cerr << "Warning: Could not remove any records from index " << indexName 
                       << " (key=" << std::visit([](const auto& v) -> std::string {
                           std::ostringstream oss; oss << v; return oss.str();
-                      }, columnValue) << ", recordId=" << recordId << ")" << std::endl;
-            return false;
+                      }, columnValue) << ", found " << existingRecords.size() << " matches)" << std::endl;
         }
     }
     
@@ -492,4 +491,55 @@ void IndexManager::rebuildIndexes() {
         
         std::cout << "Index '" << indexName << "' rebuilt successfully" << std::endl;
     }
+}
+
+bool IndexManager::rebuildTableIndexes(const std::string& tableName) {
+    // 查找表
+    auto tableIt = tables_.find(tableName);
+    if (tableIt == tables_.end()) {
+        std::cerr << "Table not found for index rebuild: " << tableName << std::endl;
+        return false;
+    }
+    
+    auto table = tableIt->second;
+    bool allSuccess = true;
+    
+    // 重建该表的所有索引
+    for (const auto& pair : indexInfos_) {
+        const auto& indexInfo = pair.second;
+        if (indexInfo->tableName != tableName) continue;
+        
+        const std::string& indexName = pair.first;
+        auto indexIt = indexes_.find(indexName);
+        if (indexIt == indexes_.end()) continue;
+        
+        std::cerr << "Rebuilding index: " << indexName << std::endl;
+        
+        // 清空索引
+        indexIt->second = std::make_unique<BPlusTree>();
+        
+        // 重新构建索引
+        int columnIndex = table->getColumnIndex(indexInfo->columnName);
+        if (columnIndex < 0) {
+            std::cerr << "Column not found during rebuild: " << indexInfo->columnName << std::endl;
+            allSuccess = false;
+            continue;
+        }
+        
+        std::vector<uint32_t> allRecordIds = table->getAllRecordIds();
+        for (uint32_t recordId : allRecordIds) {
+            Row row = table->getRow(recordId);
+            if (row.getFieldCount() > 0) {
+                Value columnValue = row.getValue(columnIndex);
+                if (!indexIt->second->insert(columnValue, recordId)) {
+                    std::cerr << "Failed to insert into rebuilt index: " << indexName << std::endl;
+                    allSuccess = false;
+                }
+            }
+        }
+        
+        std::cerr << "Index " << indexName << " rebuilt with " << allRecordIds.size() << " records" << std::endl;
+    }
+    
+    return allSuccess;
 }

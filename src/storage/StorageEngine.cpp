@@ -248,8 +248,16 @@ bool StorageEngine::deleteRow(const std::string& tableName, const Row& row, uint
     
     // 然后从表中删除行
     if (!table->deleteRow(recordId)) {
-        std::cerr << "Failed to delete row from table" << std::endl;
-        return false;
+        // 检查是否是因为recordId不存在（可能已经被删除）
+        Row testRow = table->getRow(recordId);
+        if (testRow.getFieldCount() == 0) {
+            // recordId不存在，可能已经被删除，这不算错误
+            std::cout << "Row deleted from table " << tableName << " (already removed)" << std::endl;
+            return true;
+        } else {
+            std::cerr << "Failed to delete row from table" << std::endl;
+            return false;
+        }
     }
     
     std::cout << "Row deleted from table " << tableName << std::endl;

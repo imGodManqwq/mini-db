@@ -47,41 +47,42 @@ ExecutionResult DeleteExecutor::next() {
         size_t failedCount = 0;
         std::string errorMessages;
         
-        // 获取所有记录ID并立即删除符合条件的记录
-        // 注意：我们需要在循环中重新获取记录ID，因为删除操作可能会影响ID分配
-        bool continueDeleting = true;
-        while (continueDeleting) {
-            continueDeleting = false;
-            std::vector<uint32_t> currentRecordIds = table->getAllRecordIds();
+        // 使用两阶段删除策略：先收集要删除的recordId，然后批量删除
+        std::vector<uint32_t> allRecordIds = table->getAllRecordIds();
+        std::vector<std::pair<uint32_t, Row>> recordsToDelete;
+        
+        // 第一阶段：收集所有需要删除的记录
+        for (uint32_t recordId : allRecordIds) {
+            Row currentRow = table->getRow(recordId);
+            if (currentRow.getFieldCount() == 0) {
+                continue;
+            }
             
-            for (uint32_t recordId : currentRecordIds) {
-                Row currentRow = table->getRow(recordId);
-                if (currentRow.getFieldCount() == 0) {
-                    continue;
+            // 检查WHERE条件
+            bool shouldDelete = true;
+            if (deleteStmt_->whereClause) {
+                shouldDelete = evaluateWhereCondition(deleteStmt_->whereClause.get(), currentRow);
+            }
+            
+            if (shouldDelete) {
+                recordsToDelete.push_back({recordId, currentRow});
+            }
+        }
+        
+        // 第二阶段：执行删除操作
+        for (const auto& recordPair : recordsToDelete) {
+            uint32_t recordId = recordPair.first;
+            Row rowCopy = recordPair.second;
+            
+            bool success = context_->getStorageEngine()->deleteRow(deleteStmt_->tableName, rowCopy, recordId);
+            if (success) {
+                deletedCount++;
+            } else {
+                failedCount++;
+                if (!errorMessages.empty()) {
+                    errorMessages += "; ";
                 }
-                
-                // 检查WHERE条件
-                bool shouldDelete = true;
-                if (deleteStmt_->whereClause) {
-                    shouldDelete = evaluateWhereCondition(deleteStmt_->whereClause.get(), currentRow);
-                }
-                
-                if (shouldDelete) {
-                    // 先保存当前行的副本，因为删除操作可能会修改行数据
-                    Row rowCopy = currentRow;
-                    bool success = context_->getStorageEngine()->deleteRow(deleteStmt_->tableName, rowCopy, recordId);
-                    if (success) {
-                        deletedCount++;
-                        continueDeleting = true; // 继续查找更多需要删除的记录
-                        break; // 跳出内层循环，重新获取记录ID
-                    } else {
-                        failedCount++;
-                        if (!errorMessages.empty()) {
-                            errorMessages += "; ";
-                        }
-                        errorMessages += "Failed to delete record " + std::to_string(recordId);
-                    }
-                }
+                errorMessages += "Failed to delete record " + std::to_string(recordId);
             }
         }
         
@@ -146,46 +147,91 @@ Value DeleteExecutor::evaluateExpression(Expression* expr, const Row& currentRow
             // 实现基本的比较运算
             switch (binary->operator_) {
                 case TokenType::EQUAL:
-                    return (left == right) ? 1 : 0;
+                    {
+                        // 处理数值比较
+                        if ((std::holds_alternative<int>(left) || std::holds_alternative<double>(left)) &&
+                            (std::holds_alternative<int>(right) || std::holds_alternative<double>(right))) {
+                            double leftVal = std::holds_alternative<int>(left) ? 
+                                static_cast<double>(std::get<int>(left)) : std::get<double>(left);
+                            double rightVal = std::holds_alternative<int>(right) ? 
+                                static_cast<double>(std::get<int>(right)) : std::get<double>(right);
+                            return (std::abs(leftVal - rightVal) < 1e-9) ? 1 : 0;
+                        }
+                        // 处理字符串和其他类型的直接比较
+                        return (left == right) ? 1 : 0;
+                    }
                     
                 case TokenType::NOT_EQUAL:
-                    return (left != right) ? 1 : 0;
+                    {
+                        // 处理数值比较
+                        if ((std::holds_alternative<int>(left) || std::holds_alternative<double>(left)) &&
+                            (std::holds_alternative<int>(right) || std::holds_alternative<double>(right))) {
+                            double leftVal = std::holds_alternative<int>(left) ? 
+                                static_cast<double>(std::get<int>(left)) : std::get<double>(left);
+                            double rightVal = std::holds_alternative<int>(right) ? 
+                                static_cast<double>(std::get<int>(right)) : std::get<double>(right);
+                            return (std::abs(leftVal - rightVal) >= 1e-9) ? 1 : 0;
+                        }
+                        // 处理字符串和其他类型的直接比较
+                        return (left != right) ? 1 : 0;
+                    }
                     
                 case TokenType::GREATER_THAN:
-                    if (std::holds_alternative<int>(left) && std::holds_alternative<int>(right)) {
-                        return (std::get<int>(left) > std::get<int>(right)) ? 1 : 0;
+                    {
+                        double leftVal = 0.0, rightVal = 0.0;
+                        if (std::holds_alternative<int>(left)) leftVal = static_cast<double>(std::get<int>(left));
+                        else if (std::holds_alternative<double>(left)) leftVal = std::get<double>(left);
+                        else break;
+                        
+                        if (std::holds_alternative<int>(right)) rightVal = static_cast<double>(std::get<int>(right));
+                        else if (std::holds_alternative<double>(right)) rightVal = std::get<double>(right);
+                        else break;
+                        
+                        return (leftVal > rightVal) ? 1 : 0;
                     }
-                    if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) {
-                        return (std::get<double>(left) > std::get<double>(right)) ? 1 : 0;
-                    }
-                    break;
                     
                 case TokenType::GREATER_EQUAL:
-                    if (std::holds_alternative<int>(left) && std::holds_alternative<int>(right)) {
-                        return (std::get<int>(left) >= std::get<int>(right)) ? 1 : 0;
+                    {
+                        double leftVal = 0.0, rightVal = 0.0;
+                        if (std::holds_alternative<int>(left)) leftVal = static_cast<double>(std::get<int>(left));
+                        else if (std::holds_alternative<double>(left)) leftVal = std::get<double>(left);
+                        else break;
+                        
+                        if (std::holds_alternative<int>(right)) rightVal = static_cast<double>(std::get<int>(right));
+                        else if (std::holds_alternative<double>(right)) rightVal = std::get<double>(right);
+                        else break;
+                        
+                        return (leftVal >= rightVal) ? 1 : 0;
                     }
-                    if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) {
-                        return (std::get<double>(left) >= std::get<double>(right)) ? 1 : 0;
-                    }
-                    break;
                     
                 case TokenType::LESS_THAN:
-                    if (std::holds_alternative<int>(left) && std::holds_alternative<int>(right)) {
-                        return (std::get<int>(left) < std::get<int>(right)) ? 1 : 0;
+                    {
+                        double leftVal = 0.0, rightVal = 0.0;
+                        if (std::holds_alternative<int>(left)) leftVal = static_cast<double>(std::get<int>(left));
+                        else if (std::holds_alternative<double>(left)) leftVal = std::get<double>(left);
+                        else break;
+                        
+                        if (std::holds_alternative<int>(right)) rightVal = static_cast<double>(std::get<int>(right));
+                        else if (std::holds_alternative<double>(right)) rightVal = std::get<double>(right);
+                        else break;
+                        
+                        // Comparison: leftVal < rightVal
+                        return (leftVal < rightVal) ? 1 : 0;
                     }
-                    if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) {
-                        return (std::get<double>(left) < std::get<double>(right)) ? 1 : 0;
-                    }
-                    break;
                     
                 case TokenType::LESS_EQUAL:
-                    if (std::holds_alternative<int>(left) && std::holds_alternative<int>(right)) {
-                        return (std::get<int>(left) <= std::get<int>(right)) ? 1 : 0;
+                    {
+                        double leftVal = 0.0, rightVal = 0.0;
+                        if (std::holds_alternative<int>(left)) leftVal = static_cast<double>(std::get<int>(left));
+                        else if (std::holds_alternative<double>(left)) leftVal = std::get<double>(left);
+                        else break;
+                        
+                        if (std::holds_alternative<int>(right)) rightVal = static_cast<double>(std::get<int>(right));
+                        else if (std::holds_alternative<double>(right)) rightVal = std::get<double>(right);
+                        else break;
+                        
+                        return (leftVal <= rightVal) ? 1 : 0;
                     }
-                    if (std::holds_alternative<double>(left) && std::holds_alternative<double>(right)) {
-                        return (std::get<double>(left) <= std::get<double>(right)) ? 1 : 0;
-                    }
-                    break;
                     
                 case TokenType::AND:
                     {
