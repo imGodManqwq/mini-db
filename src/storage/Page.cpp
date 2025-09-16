@@ -128,10 +128,62 @@ bool Page::deleteRecord(uint16_t slotId) {
 }
 
 bool Page::updateRecord(uint16_t slotId, const std::string& newRecord) {
-    if (!deleteRecord(slotId)) {
-        return false;
+    if (slotId >= slots_.size() || slots_[slotId] == 0) {
+        return false; // 无效的槽位ID
     }
-    return insertRecord(newRecord);
+    
+    uint16_t oldOffset = slots_[slotId];
+    uint16_t oldRecordSize = *reinterpret_cast<const uint16_t*>(&data_[oldOffset]);
+    uint16_t oldTotalSize = oldRecordSize + sizeof(uint16_t); // 原记录总大小
+    uint16_t newTotalSize = static_cast<uint16_t>(newRecord.size() + sizeof(uint16_t)); // 新记录总大小
+    
+    if (newTotalSize <= oldTotalSize) {
+        // 情况1：新记录不大于原记录，直接就地更新
+        
+        // 更新长度字段
+        *reinterpret_cast<uint16_t*>(&data_[oldOffset]) = static_cast<uint16_t>(newRecord.size());
+        
+        // 更新数据
+        std::memcpy(&data_[oldOffset + sizeof(uint16_t)], newRecord.data(), newRecord.size());
+        
+        // 如果新记录更小，可能产生碎片（简化处理，不回收）
+        
+        updateChecksum();
+        return true;
+        
+    } else if (header_.freeSpaceSize >= newTotalSize) {
+        // 情况2：新记录更大但页面有足够空间，在末尾写入新记录
+        
+        // 在页面末尾写入新记录
+        uint16_t newOffset = header_.freeSpaceOffset;
+        
+        // 写入新记录长度
+        *reinterpret_cast<uint16_t*>(&data_[newOffset]) = static_cast<uint16_t>(newRecord.size());
+        newOffset += sizeof(uint16_t);
+        
+        // 写入新记录数据
+        std::memcpy(&data_[newOffset], newRecord.data(), newRecord.size());
+        
+        // 更新槽位指向
+        slots_[slotId] = header_.freeSpaceOffset;
+        
+        // 更新页头信息
+        header_.freeSpaceOffset += newTotalSize;
+        header_.freeSpaceSize -= newTotalSize;
+        
+        // 标记原记录位置为无效（简化处理，不回收空间）
+        // 原记录的空间成为碎片，可以在compactPage()时回收
+        
+        updateChecksum();
+        return true;
+        
+    } else {
+        // 情况3：页面空间不足，使用删除+重新插入策略
+        if (!deleteRecord(slotId)) {
+            return false;
+        }
+        return insertRecord(newRecord);
+    }
 }
 
 size_t Page::getFreeSpace() const {

@@ -216,6 +216,8 @@ bool Table::updateRow(uint32_t recordId, const Row& newRow) {
         if (newSlotId != UINT16_MAX) {
             // 成功插入到同一页面，更新位置映射
             recordLocations_[recordId] = RecordLocation(oldLocation.pageId, newSlotId);
+            // 重建该页面的所有记录映射以确保一致性
+            rebuildPageRecordLocations(oldLocation.pageId);
             pageManager_->writePage(page);
             return true;
         } else {

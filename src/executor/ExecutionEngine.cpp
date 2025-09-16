@@ -328,60 +328,66 @@ std::unique_ptr<Executor> ExecutionEngine::createOptimalScanExecutor(const std::
                             // 但SQL的 > 和 < 是开区间，>= 和 <= 是闭区间
                             switch (binaryExpr->operator_) {
                                 case TokenType::GREATER_THAN: {
-                                    // salary > 70000：需要找到 > 70000 的记录
+                                    // column > value：需要找到 > value 的记录
                                     // 由于findRecordsInRange使用闭区间，我们稍微增加startKey的值
                                     if (std::holds_alternative<double>(literal->value)) {
                                         double val = std::get<double>(literal->value);
                                         startKey = Value(val + 0.01);  // 稍微增加以排除等于的情况
+                                        endKey = Value(1000000.0);  // double类型上界
                                     } else if (std::holds_alternative<int>(literal->value)) {
                                         int val = std::get<int>(literal->value);
-                                        startKey = Value(static_cast<double>(val) + 0.01);  // 转换为double并稍微增加
+                                        startKey = Value(val + 1);  // 保持int类型，增加1以排除等于的情况
+                                        endKey = Value(1000000);  // int类型上界
                                     } else {
                                         startKey = literal->value;
+                                        endKey = literal->value; // 默认使用相同类型
                                     }
                                     useStartKey = true;
-                                    endKey = Value(1000000.0);  // 上界
                                     useEndKey = true;
                                     break;
                                 }
                                 case TokenType::GREATER_EQUAL:
-                                    // salary >= 70000：直接使用原值，但确保类型一致
-                                    if (std::holds_alternative<int>(literal->value)) {
-                                        int val = std::get<int>(literal->value);
-                                        startKey = Value(static_cast<double>(val));  // 转换为double
-                                    } else {
-                                        startKey = literal->value;
-                                    }
-                                    useStartKey = true;
-                                    endKey = Value(1000000.0);  // 上界
-                                    useEndKey = true;
-                                    break;
-                                case TokenType::LESS_THAN: {
-                                    // salary < 70000：需要找到 < 70000 的记录
-                                    startKey = Value(0.0);  // 下界
-                                    useStartKey = true;
+                                    // column >= value：直接使用原值，保持类型一致
+                                    startKey = literal->value;  // 保持原始类型
                                     if (std::holds_alternative<double>(literal->value)) {
-                                        double val = std::get<double>(literal->value);
-                                        endKey = Value(val - 0.01);  // 稍微减少以排除等于的情况
+                                        endKey = Value(1000000.0);  // double类型上界
                                     } else if (std::holds_alternative<int>(literal->value)) {
-                                        int val = std::get<int>(literal->value);
-                                        endKey = Value(static_cast<double>(val) - 0.01);  // 转换为double并稍微减少
+                                        endKey = Value(1000000);  // int类型上界
                                     } else {
                                         endKey = literal->value;
                                     }
+                                    useStartKey = true;
+                                    useEndKey = true;
+                                    break;
+                                case TokenType::LESS_THAN: {
+                                    // column < value：需要找到 < value 的记录
+                                    if (std::holds_alternative<double>(literal->value)) {
+                                        startKey = Value(0.0);  // double类型下界
+                                        double val = std::get<double>(literal->value);
+                                        endKey = Value(val - 0.01);  // 稍微减少以排除等于的情况
+                                    } else if (std::holds_alternative<int>(literal->value)) {
+                                        startKey = Value(0);  // int类型下界
+                                        int val = std::get<int>(literal->value);
+                                        endKey = Value(val - 1);  // 保持int类型，减去1以排除等于的情况
+                                    } else {
+                                        startKey = literal->value;
+                                        endKey = literal->value;
+                                    }
+                                    useStartKey = true;
                                     useEndKey = true;
                                     break;
                                 }
                                 case TokenType::LESS_EQUAL:
-                                    // salary <= 70000：直接使用原值，但确保类型一致
-                                    startKey = Value(0.0);  // 下界
-                                    useStartKey = true;
-                                    if (std::holds_alternative<int>(literal->value)) {
-                                        int val = std::get<int>(literal->value);
-                                        endKey = Value(static_cast<double>(val));  // 转换为double
+                                    // column <= value：直接使用原值，保持类型一致
+                                    if (std::holds_alternative<double>(literal->value)) {
+                                        startKey = Value(0.0);  // double类型下界
+                                    } else if (std::holds_alternative<int>(literal->value)) {
+                                        startKey = Value(0);  // int类型下界
                                     } else {
-                                        endKey = literal->value;
+                                        startKey = literal->value;
                                     }
+                                    endKey = literal->value;  // 保持原始类型
+                                    useStartKey = true;
                                     useEndKey = true;
                                     break;
                             }
