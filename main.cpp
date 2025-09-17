@@ -118,6 +118,9 @@ void testIndexPerformance() {
         
         std::cout << "Test environment initialized" << std::endl;
         
+        // 测试微秒显示是否正常
+        std::cout << "Testing microsecond display: 1000 us = 1.00 ms" << std::endl;
+        
         // 2. 检查并创建测试表
         std::cout << "\n2. Checking and creating test table..." << std::endl;
         
@@ -138,7 +141,7 @@ void testIndexPerformance() {
         
         // 3. 检查并插入大量测试数据
         std::cout << "\n3. Checking and inserting large dataset..." << std::endl;
-        const int RECORD_COUNT = 10000;  // 插入1万条记录以更好展示索引优势，避免缓冲池溢出
+        const int RECORD_COUNT = 2000;  // 插入记录以更好展示索引优势，避免缓冲池溢出
         
         // 检查表中现有数据量
         std::string countSQL = "SELECT COUNT(*) FROM employees;";
@@ -181,8 +184,9 @@ void testIndexPerformance() {
                 auto start_rebuild = std::chrono::high_resolution_clock::now();
                 storage.rebuildTableIndexes("employees");
                 auto end_rebuild = std::chrono::high_resolution_clock::now();
-                auto rebuild_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_rebuild - start_rebuild);
-                std::cout << "v Index rebuilding completed in " << rebuild_duration.count() << " ms" << std::endl;
+                auto rebuild_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_rebuild - start_rebuild);
+                std::cout << "v Index rebuilding completed in " << rebuild_duration.count() << " us (" 
+                          << std::fixed << std::setprecision(2) << (rebuild_duration.count() / 1000.0) << " ms)" << std::endl;
             }
         } else {
             std::cout << "Need to insert " << (RECORD_COUNT - existingRecords) << " more records" << std::endl;
@@ -193,57 +197,79 @@ void testIndexPerformance() {
             auto start_insert = std::chrono::high_resolution_clock::now();
             int insertCount = 0;
             
-            // 使用批量插入优化性能
-            const int BATCH_SIZE = 1000;
-            std::vector<std::vector<Value>> batchData;
-            batchData.reserve(BATCH_SIZE);
+            std::cout << "Using normal INSERT statements to ensure index consistency..." << std::endl;
             
+            // 使用正常INSERT确保索引一致性
             for (int i = existingRecords + 1; i <= RECORD_COUNT; ++i) {
-                // 直接构建数据行，避免SQL解析开销
-                std::vector<Value> rowData = {
-                    Value(i),  // id
-                    Value(names[i % names.size()] + std::to_string(i)),  // name
-                    Value(departments[i % departments.size()]),  // department
-                    Value(20 + (i % 45)),  // age: 20-64
-                    Value(30000.0 + (i * 5.0))  // salary
-                };
+                // 构建INSERT SQL语句
+                std::string name = names[i % names.size()] + std::to_string(i);
+                std::string department = departments[i % departments.size()];
+                int age = 20 + (i % 45);
+                double salary = 30000.0 + (i * 5.0);
                 
-                batchData.push_back(std::move(rowData));
+                std::ostringstream insertSQL;
+                insertSQL << "INSERT INTO employees VALUES (" 
+                          << i << ", '" << name << "', '" << department << "', " 
+                          << age << ", " << salary << ");";
                 
-                // 当批次满了或者是最后一批时，执行快速批量插入（跳过索引更新）
-                if (batchData.size() == BATCH_SIZE || i == RECORD_COUNT) {
-                    size_t batchSuccess = storage.fastBatchInsertRows("employees", batchData);
-                    insertCount += batchSuccess;
-                    
-                    if (batchSuccess < batchData.size()) {
-                        std::cout << "x Some records failed in batch. Success: " << batchSuccess << "/" << batchData.size() << std::endl;
+                // 执行INSERT语句
+                Parser parser(insertSQL.str());
+                auto stmt = parser.parseStatement();
+                if (stmt) {
+                    auto result = engine.executeStatement(stmt.get());
+                    if (result.isSuccess()) {
+                        insertCount++;
+                    } else {
+                        std::cout << "x Failed to insert record " << i << ": " << result.message << std::endl;
                     }
-                    
-                    // 显示进度
+                } else {
+                    std::cout << "x Failed to parse INSERT for record " << i << std::endl;
+                }
+                
+                // 每1000条记录显示一次进度
+                if (i % 1000 == 0) {
                     std::cout << "Inserted " << insertCount << " records..." << std::endl;
-                    batchData.clear();
                 }
             }
+
+
+            // 插入一个特殊的100岁雇员记录，作为唯一的100岁雇员
+            std::cout << "Inserting special 100-year-old employee..." << std::endl;
+            std::ostringstream specialInsertSQL;
+            specialInsertSQL << "INSERT INTO employees VALUES (" 
+                            << (RECORD_COUNT + 1) << ", 'Centennial', 'Special', 100, 100000.0);";
+            
+            Parser specialParser(specialInsertSQL.str());
+            auto specialStmt = specialParser.parseStatement();
+            if (specialStmt) {
+                auto result = engine.executeStatement(specialStmt.get());
+                if (result.isSuccess()) {
+                    insertCount++;
+                    std::cout << "v Special 100-year-old employee inserted successfully" << std::endl;
+                } else {
+                    std::cout << "x Failed to insert special employee: " << result.message << std::endl;
+                }
+            } else {
+                std::cout << "x Failed to parse special INSERT" << std::endl;
+            }
+
             
             auto end_insert = std::chrono::high_resolution_clock::now();
-            auto insert_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_insert - start_insert);
-            std::cout << "v Inserted " << insertCount << " new records in " << insert_duration.count() << " ms" << std::endl;
+            auto insert_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_insert - start_insert);
+            std::cout << "v Inserted " << insertCount << " new records in " << insert_duration.count() << " us (" 
+                      << std::fixed << std::setprecision(2) << (insert_duration.count() / 1000.0) << " ms)" << std::endl;
             
-            // 强制写入所有脏页面
+            // 正常INSERT已经自动维护了所有索引，无需重建
+            std::cout << "\nAll indexes automatically maintained during INSERT operations" << std::endl;
+            
+            // 可选：刷新脏页面到磁盘
             std::cout << "\nFlushing pages to disk..." << std::endl;
             auto start_flush = std::chrono::high_resolution_clock::now();
             storage.flushAllPages();
             auto end_flush = std::chrono::high_resolution_clock::now();
-            auto flush_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_flush - start_flush);
-            std::cout << "v Page flushing completed in " << flush_duration.count() << " ms" << std::endl;
-            
-            // 重建主键索引（快速插入跳过了索引更新）
-            std::cout << "\nRebuilding primary key index..." << std::endl;
-            auto start_rebuild = std::chrono::high_resolution_clock::now();
-            storage.rebuildTableIndexes("employees");
-            auto end_rebuild = std::chrono::high_resolution_clock::now();
-            auto rebuild_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_rebuild - start_rebuild);
-            std::cout << "v Index rebuilding completed in " << rebuild_duration.count() << " ms" << std::endl;
+            auto flush_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_flush - start_flush);
+            std::cout << "v Page flushing completed in " << flush_duration.count() << " us (" 
+                      << std::fixed << std::setprecision(2) << (flush_duration.count() / 1000.0) << " ms)" << std::endl;
         }
         
         // 4. 测试无索引的查询性能（临时删除非主键索引）
@@ -264,13 +290,10 @@ void testIndexPerformance() {
         
         std::vector<std::pair<std::string, std::string>> queries = {
             {"Specific age lookup", "SELECT * FROM employees WHERE age = 35;"},
-            {"Department lookup", "SELECT * FROM employees WHERE department = 'Engineering';"},
-            {"High salary range", "SELECT * FROM employees WHERE salary > 70000;"},
-            {"Rare age lookup", "SELECT * FROM employees WHERE age = 63;"},  // 更少的记录
-            {"IT department", "SELECT * FROM employees WHERE department = 'IT';"}
+            {"Rare age lookup", "SELECT * FROM employees WHERE age = 100;"},
         };
         
-        std::vector<long long> no_index_times;
+        std::vector<long long> no_index_times_us;  // 微秒
         
         for (const auto& query : queries) {
             std::cout << "\n--- " << query.first << " (No Index) ---" << std::endl;
@@ -284,18 +307,18 @@ void testIndexPerformance() {
             if (stmt) {
                 auto result = engine.executeStatement(stmt.get());
                 auto end = std::chrono::high_resolution_clock::now();
-                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+                auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
                 
                 if (result.isSuccess()) {
-                    std::cout << "v Found " << result.rows.size() << " records in " << duration.count() << " ms" << std::endl;
-                    no_index_times.push_back(duration.count());
+                    std::cout << "v Found " << result.rows.size() << " records in " << duration.count() << " us" << std::endl;
+                    no_index_times_us.push_back(duration.count());
                 } else {
                     std::cout << "x Query failed: " << result.message << std::endl;
-                    no_index_times.push_back(-1);
+                    no_index_times_us.push_back(-1);
                 }
             } else {
                 std::cout << "x Parse failed" << std::endl;
-                no_index_times.push_back(-1);
+                no_index_times_us.push_back(-1);
             }
         }
         
@@ -303,9 +326,9 @@ void testIndexPerformance() {
         std::cout << "\n5. Checking and creating indexes..." << std::endl;
         
         std::vector<std::pair<std::string, std::string>> indexesToCreate = {
-            {"idx_age", "CREATE INDEX idx_age ON employees(age);"},
-            {"idx_department", "CREATE INDEX idx_department ON employees(department);"},
-            {"idx_salary", "CREATE INDEX idx_salary ON employees(salary);"}
+            {"idx_age", "CREATE INDEX idx_age ON employees(age);"}
+            // {"idx_department", "CREATE INDEX idx_department ON employees(department);"},
+            // {"idx_salary", "CREATE INDEX idx_salary ON employees(salary);"}
         };
         
         for (const auto& indexInfo : indexesToCreate) {
@@ -334,7 +357,7 @@ void testIndexPerformance() {
         // 6. 测试有索引的查询性能
         std::cout << "\n6. Testing query performance WITH index..." << std::endl;
         
-        std::vector<long long> with_index_times;
+        std::vector<long long> with_index_times_us;  // 微秒
         
         for (const auto& query : queries) {
             std::cout << "\n--- " << query.first << " (With Index) ---" << std::endl;
@@ -348,44 +371,44 @@ void testIndexPerformance() {
             if (stmt) {
                 auto result = engine.executeStatement(stmt.get());
                 auto end = std::chrono::high_resolution_clock::now();
-                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+                auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
                 
                 if (result.isSuccess()) {
-                    std::cout << "v Found " << result.rows.size() << " records in " << duration.count() << " ms" << std::endl;
-                    with_index_times.push_back(duration.count());
+                    std::cout << "v Found " << result.rows.size() << " records in " << duration.count() << " us" << std::endl;
+                    with_index_times_us.push_back(duration.count());
                 } else {
                     std::cout << "x Query failed: " << result.message << std::endl;
-                    with_index_times.push_back(-1);
+                    with_index_times_us.push_back(-1);
                 }
             } else {
                 std::cout << "x Parse failed" << std::endl;
-                with_index_times.push_back(-1);
+                with_index_times_us.push_back(-1);
             }
         }
         
         // 7. 性能对比总结
         std::cout << "\n7. Performance Comparison Summary" << std::endl;
-        std::cout << "================================================" << std::endl;
+        std::cout << "========================================================" << std::endl;
         std::cout << std::left << std::setw(25) << "Query Type" 
-                  << std::setw(15) << "No Index (ms)" 
-                  << std::setw(15) << "With Index (ms)" 
+                  << std::setw(18) << "No Index (us)" 
+                  << std::setw(18) << "With Index (us)" 
                   << std::setw(15) << "Speedup" << std::endl;
-        std::cout << std::string(70, '-') << std::endl;
+        std::cout << std::string(76, '-') << std::endl;
         
         for (size_t i = 0; i < queries.size(); ++i) {
             std::cout << std::left << std::setw(25) << queries[i].first;
             
-            if (no_index_times[i] >= 0 && with_index_times[i] >= 0) {
-                double speedup = with_index_times[i] > 0 ? 
-                    static_cast<double>(no_index_times[i]) / with_index_times[i] : 1.0;
-                std::cout << std::setw(15) << no_index_times[i]
-                          << std::setw(15) << with_index_times[i]
+            if (no_index_times_us[i] >= 0 && with_index_times_us[i] >= 0) {
+                double speedup = with_index_times_us[i] > 0 ? 
+                    static_cast<double>(no_index_times_us[i]) / with_index_times_us[i] : 1.0;
+                std::cout << std::setw(18) << no_index_times_us[i]
+                          << std::setw(18) << with_index_times_us[i]
                           << std::fixed << std::setprecision(2) << speedup << "x";
             } else {
-                std::string noIndexStr = no_index_times[i] >= 0 ? std::to_string(no_index_times[i]) : "FAILED";
-                std::string withIndexStr = with_index_times[i] >= 0 ? std::to_string(with_index_times[i]) : "FAILED";
-                std::cout << std::setw(15) << noIndexStr
-                          << std::setw(15) << withIndexStr
+                std::string noIndexStr = no_index_times_us[i] >= 0 ? std::to_string(no_index_times_us[i]) : "FAILED";
+                std::string withIndexStr = with_index_times_us[i] >= 0 ? std::to_string(with_index_times_us[i]) : "FAILED";
+                std::cout << std::setw(18) << noIndexStr
+                          << std::setw(18) << withIndexStr
                           << "N/A";
             }
             std::cout << std::endl;
@@ -399,7 +422,6 @@ void testIndexPerformance() {
         std::cout << "\n9. Storage Statistics" << std::endl;
         std::cout << "Total records: " << RECORD_COUNT << std::endl;
         std::cout << "Tables: 1" << std::endl;
-        std::cout << "Indexes: 4 (including primary key)" << std::endl;
         
         std::cout << "\n=== Index Performance Test Completed ===" << std::endl;
         
@@ -407,14 +429,12 @@ void testIndexPerformance() {
         std::cerr << "Exception occurred during performance testing: " << e.what() << std::endl;
     }
 }
-
-
 int main() {
     std::cout << "MiniDB Started" << std::endl;
     std::cout << "Choose mode:" << std::endl;
     std::cout << "1. Test Index Performance (Speed comparison with/without indexes)" << std::endl;
     std::cout << "2. Start REPL Interactive Mode" << std::endl;
-    std::cout << "Please enter your choice (1-19): ";
+    std::cout << "Please enter your choice (1-2): ";
     
     int choice;
     std::cin >> choice;

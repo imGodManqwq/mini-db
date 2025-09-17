@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(MiniDB_AI)
+project(MiniDB)
 
 add_compile_options(/utf-8)
 set(CMAKE_CXX_STANDARD 17)
